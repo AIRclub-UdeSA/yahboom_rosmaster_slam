@@ -175,6 +175,12 @@ odom -> base_footprint TF (wheel odometry) ─┘
   "Current Project Status"): the drivetrain, LiDAR, and IMU are nominal,
   uncalibrated models, not validated against the physical ROSMASTER X3.
 - Tuned and tested against the empty and cafe Fortress worlds only.
+- `rviz/slam_view.rviz` intentionally omits the `RobotModel` display and
+  slam_toolbox's own `SlamToolboxPlugin` RViz panel. Both reliably crashed
+  RViz (segfault) when tested against this simulator on an Intel Iris Plus
+  (Mesa/i915) GPU; TF axes and the LaserScan fan already show the robot's
+  live pose without them. If your system doesn't hit this, add them back
+  via RViz's Panels/Displays "Add" buttons.
 
 ## Repository Layout
 
