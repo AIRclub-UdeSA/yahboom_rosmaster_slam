@@ -59,6 +59,15 @@ source /opt/ros/humble/setup.bash
 source ~/rosmaster_ws/install/setup.bash
 ```
 
+## Screenshots
+
+Gazebo (cafe world) alongside RViz building the occupancy map live as the
+robot explores:
+
+| Gazebo (cafe world) | RViz (live SLAM map) |
+|----------------------|-----------------------|
+| ![Gazebo cafe world](docs/images/gazebo_cafe_world.png) | ![RViz SLAM map](docs/images/rviz_slam_map.png) |
+
 ## Quick Start
 
 Launch the simulator and SLAM together in one command (default: empty world,
