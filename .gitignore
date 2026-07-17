@@ -1,0 +1,10 @@
+build/
+install/
+log/
+__pycache__/
+*.pyc
+*~
+
+# Maps saved locally while testing (keep the repo free of ad hoc runs)
+/map.yaml
+/map.pgm
