@@ -4,7 +4,7 @@ project(yahboom_rosmaster_slam)
 find_package(ament_cmake REQUIRED)
 
 install(
-  DIRECTORY config launch rviz scripts
+  DIRECTORY config launch rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
