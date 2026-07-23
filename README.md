@@ -140,6 +140,67 @@ This writes `my_map.yaml` and `my_map.pgm`, in the same format consumed by
 `yahboom_rosmaster_navigation`'s map files
 (`yahboom_rosmaster_navigation/maps/*.yaml`).
 
+## Localization Mode
+
+Besides online mapping, this package can also run slam_toolbox in
+**localization mode**: correcting the robot's pose against a map you already
+built, instead of building a new one. This is slam_toolbox's own native
+localization (`localization_slam_toolbox_node`), not Nav2's AMCL — there is
+no particle filter and no global relocalization. You seed it with an
+approximate starting pose and it scan-matches from there.
+
+### 1. Build and serialize a map
+
+Map as usual with `slam.launch.py` (see Quick Start above). Then, from the
+same terminal you'll later launch localization from, serialize the
+pose-graph:
+
+```bash
+cd ~/rosmaster_ws   # or wherever you'll run localization.launch.py from
+ros2 run yahboom_rosmaster_slam serialize_map.sh my_map
+```
+
+This writes `my_map.posegraph` and `my_map.data` in the current directory.
+Unlike `save_map.sh` above (which exports a static `nav2_map_server` pgm/yaml
+raster for Nav2/AMCL), this preserves slam_toolbox's full pose-graph so it
+can resume scan-matching later.
+
+**slam_toolbox resolves `map_file_name` relative to the node's own working
+directory, and does not honor absolute paths** — passing an absolute path
+does not override the working directory, it gets concatenated onto it,
+silently pointing at the wrong file. Always `cd` into the map's directory
+before launching (either mapping or localization) and use a bare filename.
+
+### 2. Localize against it
+
+From that same directory:
+
+```bash
+ros2 launch yahboom_rosmaster_slam localization.launch.py \
+  map_file_name:=my_map \
+  map_start_pose:="[0.0, 0.0, 0.0]"
+```
+
+`map_file_name` and `map_start_pose` are both required (no defaults). Set
+`map_start_pose` to the robot's actual starting `[x, y, yaw]` in the map
+frame — if it's off, localization won't converge, since this isn't a global
+relocalizer. As with `slam.launch.py`, add `start_simulator:=false` if the
+simulator is already running elsewhere.
+
+### Launch Arguments
+
+| Argument | Default | Description |
+|----------|---------|--------------|
+| `start_simulator` | `true` | Launch `yahboom_rosmaster_gazebo` alongside SLAM |
+| `world` | `worlds/empty.world` | Absolute path to the Gazebo world file (only used if `start_simulator:=true`) |
+| `headless` | `false` | Run the Gazebo server without its GUI client |
+| `use_sim_time` | `true` | Use the Gazebo simulation clock |
+| `slam_params_file` | `config/slam_toolbox_localization_params.yaml` | slam_toolbox parameters |
+| `map_file_name` | *(required)* | Serialized map filename prefix, resolved relative to the launch working directory |
+| `map_start_pose` | *(required)* | Initial `[x, y, yaw]` pose (map frame) to seed localization from |
+| `open_rviz` | `true` | Start the bundled RViz SLAM view |
+| `rviz_config_file` | `rviz/slam_view.rviz` | RViz configuration to use |
+
 ## Verifying SLAM Is Running
 
 ```bash
@@ -175,11 +236,27 @@ odom -> base_footprint TF (wheel odometry) ─┘
   sensor range to keep rasterized maps a reasonable size for the empty/cafe
   worlds.
 
+Localization mode (`config/slam_toolbox_localization_params.yaml`) shares all
+of the above, plus a smaller scan buffer and loop-closure chain size
+(consuming a pre-built map instead of growing one from scratch needs less
+history):
+
+```text
+/scan (simulator LiDAR, 720 samples, 2D)  ─┐
+                                             ├─> localization_slam_toolbox_node ─> /map, map -> odom TF
+odom -> base_footprint TF (wheel odometry) ─┘         ^
+                                                       │
+                       serialized map (map_file_name) ┘ loaded at startup, seeded by map_start_pose
+```
+
 ## Known Limitations
 
-- This is online mapping only; it does not include localization-against-a-
-  saved-map or autonomous exploration. Combine the saved map with
-  `yahboom_rosmaster_navigation`'s Nav2 stack for localization/navigation.
+- `localization.launch.py` uses slam_toolbox's own localization mode, seeded
+  with a manually supplied starting pose — it is not global (AMCL-style)
+  relocalization, and there is still no autonomous exploration. For
+  Nav2-based navigation (path planning, `nav2_amcl`, etc.), combine a saved
+  `nav2_map_server` map (`save_map.sh`) with `yahboom_rosmaster_navigation`'s
+  Nav2 stack instead.
 - Inherits the simulator's own caveats (see `yahboom_rosmaster`'s README,
   "Current Project Status"): the drivetrain, LiDAR, and IMU are nominal,
   uncalibrated models, not validated against the physical ROSMASTER X3.
@@ -191,14 +268,37 @@ odom -> base_footprint TF (wheel odometry) ─┘
   live pose without them. If your system doesn't hit this, add them back
   via RViz's Panels/Displays "Add" buttons.
 
+## Continuous Integration
+
+`.github/workflows/ci.yml` builds this package and runs `ament_lint_auto`
+(copyright is intentionally disabled in `CMakeLists.txt`; xmllint, cmake
+lint, flake8, and pep257 all run) on every push and pull request, in a clean
+`ros:humble-ros-base` container. `yahboom_rosmaster_gazebo` is skipped via
+`rosdep --skip-keys` since it's a separate, non-rosdep-indexed sibling repo
+(see "How this fits into the workspace") needed to run the launch files, not
+to build or lint this one.
+
+Reproduce it locally from a workspace with this package under `src/`:
+
+```bash
+rosdep install --from-paths src --ignore-src -r -y --skip-keys yahboom_rosmaster_gazebo
+colcon build --packages-select yahboom_rosmaster_slam
+colcon test --packages-select yahboom_rosmaster_slam
+colcon test-result --verbose
+```
+
 ## Repository Layout
 
 | Path | Contents |
 |------|----------|
-| `launch/slam.launch.py` | Main launch file: simulator (optional) + slam_toolbox + RViz |
-| `config/slam_toolbox_params.yaml` | slam_toolbox parameters tuned for the ROSMASTER X3 |
-| `rviz/slam_view.rviz` | RViz view: Map, LaserScan, RobotModel, Odometry, TF |
-| `scripts/save_map.sh` | Convenience wrapper around `nav2_map_server`'s `map_saver_cli` |
+| `launch/slam.launch.py` | Mapping launch file: simulator (optional) + slam_toolbox mapping + RViz |
+| `launch/localization.launch.py` | Localization launch file: simulator (optional) + slam_toolbox localization + RViz |
+| `config/slam_toolbox_params.yaml` | slam_toolbox mapping-mode parameters tuned for the ROSMASTER X3 |
+| `config/slam_toolbox_localization_params.yaml` | slam_toolbox localization-mode parameters tuned for the ROSMASTER X3 |
+| `rviz/slam_view.rviz` | RViz view: Map, LaserScan, Odometry, TF (see "Known Limitations" for why RobotModel is omitted) |
+| `scripts/save_map.sh` | Convenience wrapper around `nav2_map_server`'s `map_saver_cli` (pgm/yaml, for Nav2/AMCL) |
+| `scripts/serialize_map.sh` | Convenience wrapper around slam_toolbox's `SerializePoseGraph` service (for `localization.launch.py`) |
+| `.github/workflows/ci.yml` | GitHub Actions: builds the package and runs `ament_lint_auto` on every push/PR |
 
 ## License
 

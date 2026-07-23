@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-lint:
+    runs-on: ubuntu-latest
+    container: ros:humble-ros-base
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: src/yahboom_rosmaster_slam
+
+      - name: Install dependencies
+        # yahboom_rosmaster_gazebo is a separate, non-rosdep-indexed sibling
+        # repo (see README "How this fits into the workspace"). It's only
+        # needed to actually run the launch files, not to build or lint this
+        # package, so it's skipped here rather than also checked out.
+        run: |
+          test -f /etc/ros/rosdep/sources.list.d/20-default.list || rosdep init
+          apt-get update
+          rosdep update
+          rosdep install --from-paths src --ignore-src -r -y \
+            --skip-keys yahboom_rosmaster_gazebo
+
+      - name: Build
+        run: |
+          . /opt/ros/humble/setup.sh
+          colcon build --packages-select yahboom_rosmaster_slam
+
+      - name: Lint
+        run: |
+          . /opt/ros/humble/setup.sh
+          colcon test --packages-select yahboom_rosmaster_slam
+          colcon test-result --verbose
