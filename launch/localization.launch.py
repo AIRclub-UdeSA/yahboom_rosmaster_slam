@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-Launch basic 2D LiDAR SLAM (slam_toolbox) for the ROSMASTER X3 simulator.
+Launch slam_toolbox localization against a previously serialized map.
 
-Starts (optionally) the yahboom_rosmaster_gazebo simulator, the slam_toolbox
-online async mapping node, and an RViz view for monitoring the map as it is
-built. slam_toolbox consumes /scan and the odom -> base_footprint TF that the
+Starts (optionally) the yahboom_rosmaster_gazebo simulator, slam_toolbox's
+localization_slam_toolbox_node against a map produced by
+scripts/serialize_map.sh (see slam.launch.py for building that map in the
+first place), and an RViz view for monitoring the robot's localized pose.
+slam_toolbox consumes /scan and the odom -> base_footprint TF that the
 simulator already publishes, so no changes to yahboom_rosmaster are required.
 """
 
 import os
+from typing import List
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -16,16 +19,17 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    """Generate the SLAM launch description."""
+    """Generate the localization launch description."""
     package_name_slam = 'yahboom_rosmaster_slam'
     package_name_gazebo = 'yahboom_rosmaster_gazebo'
 
     gazebo_launch_file_path = 'launch/rosmaster_gazebo_fortress.launch.py'
-    default_slam_params_path = 'config/slam_toolbox_params.yaml'
+    default_slam_params_path = 'config/slam_toolbox_localization_params.yaml'
     default_rviz_config_path = 'rviz/slam_view.rviz'
 
     pkg_share_slam = FindPackageShare(package=package_name_slam).find(package_name_slam)
@@ -42,6 +46,8 @@ def generate_launch_description():
     headless = LaunchConfiguration('headless')
     use_sim_time = LaunchConfiguration('use_sim_time')
     slam_params_file = LaunchConfiguration('slam_params_file')
+    map_file_name = LaunchConfiguration('map_file_name')
+    map_start_pose = LaunchConfiguration('map_start_pose')
     open_rviz = LaunchConfiguration('open_rviz')
     rviz_config_file = LaunchConfiguration('rviz_config_file')
 
@@ -78,6 +84,27 @@ def generate_launch_description():
         default_value=default_slam_params_file,
         description='Full path to the slam_toolbox parameters YAML file')
 
+    declare_map_file_name_cmd = DeclareLaunchArgument(
+        name='map_file_name',
+        description=(
+            'Filename prefix (no extension) of the serialized map to localize against, '
+            'e.g. my_map for my_map.posegraph/my_map.data produced by '
+            'scripts/serialize_map.sh. slam_toolbox resolves this relative to the '
+            'directory ros2 launch is run from (it does not honor absolute paths -- '
+            'see README "Localization Mode"), so cd there first. '
+            'Required: this argument has no default.'
+        ))
+
+    declare_map_start_pose_cmd = DeclareLaunchArgument(
+        name='map_start_pose',
+        description=(
+            'Initial [x, y, yaw] pose (map frame, meters/radians) to seed '
+            'localization from, e.g. [0.0, 0.0, 0.0]. slam_toolbox\'s '
+            'localization_slam_toolbox_node needs this starting hypothesis; it '
+            'does not do global (AMCL-style) relocalization. '
+            'Required: this argument has no default.'
+        ))
+
     declare_open_rviz_cmd = DeclareLaunchArgument(
         name='open_rviz',
         default_value='true',
@@ -100,15 +127,19 @@ def generate_launch_description():
         condition=IfCondition(start_simulator)
     )
 
-    # slam_toolbox online async mapping node
+    # slam_toolbox localization node
     start_slam_toolbox_cmd = Node(
         package='slam_toolbox',
-        executable='async_slam_toolbox_node',
+        executable='localization_slam_toolbox_node',
         name='slam_toolbox',
         output='screen',
         parameters=[
             slam_params_file,
-            {'use_sim_time': use_sim_time}
+            {
+                'use_sim_time': use_sim_time,
+                'map_file_name': map_file_name,
+                'map_start_pose': ParameterValue(map_start_pose, value_type=List[float]),
+            }
         ]
     )
 
@@ -130,6 +161,8 @@ def generate_launch_description():
     ld.add_action(declare_headless_cmd)
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_slam_params_file_cmd)
+    ld.add_action(declare_map_file_name_cmd)
+    ld.add_action(declare_map_start_pose_cmd)
     ld.add_action(declare_open_rviz_cmd)
     ld.add_action(declare_rviz_config_file_cmd)
 

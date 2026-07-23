@@ -9,7 +9,7 @@ install(
 )
 
 install(
-  PROGRAMS scripts/save_map.sh
+  PROGRAMS scripts/save_map.sh scripts/serialize_map.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
