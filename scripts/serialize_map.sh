@@ -23,5 +23,18 @@ set -euo pipefail
 
 OUTPUT_PATH="${1:-./map}"
 
-ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
-  "{filename: '${OUTPUT_PATH}'}"
+# `ros2 service call` itself exits 0 as long as it got *any* response -- it does not
+# inspect the response payload. SerializePoseGraph's own result field is what actually
+# says whether the write succeeded (RESULT_SUCCESS=0, RESULT_FAILED_TO_WRITE_FILE=255),
+# so that has to be parsed out of the response text explicitly.
+RESPONSE="$(ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
+  "{filename: '${OUTPUT_PATH}'}")"
+echo "${RESPONSE}"
+
+if ! echo "${RESPONSE}" | grep -q 'result=0)'; then
+  echo "Failed to serialize map to ${OUTPUT_PATH}.posegraph/${OUTPUT_PATH}.data" \
+       "(see result code above; a common cause is no map data yet, or the cwd caveat" \
+       "in this script's header)." >&2
+  exit 1
+fi
+echo "Serialized map to ${OUTPUT_PATH}.posegraph and ${OUTPUT_PATH}.data"

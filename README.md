@@ -213,6 +213,36 @@ ros2 run tf2_ros tf2_echo map odom
 `wheel_state_odometry.py` continues to own `odom -> base_footprint`. Together
 these give a complete `map -> odom -> base_footprint` chain.
 
+## Troubleshooting
+
+**A Python node dies immediately with `ModuleNotFoundError: No module named
+'rclpy._rclpy_pybind11'`** (usually `cmd_vel_watchdog.py` or
+`wheel_state_odometry.py` in the launch log) — a conda environment is active
+in the terminal (look for `(base)` in your prompt) and its `python3` is ahead
+of the system one in `PATH`. `rclpy`'s compiled extension only exists for the
+system Python ROS 2 was built against, so conda's Python silently can't
+import it. Fix:
+
+```bash
+conda deactivate
+which python3   # must print /usr/bin/python3, not .../miniconda3/...
+```
+
+To stop this happening in every new terminal: `conda config --set
+auto_activate_base false`.
+
+**Repeated `Message Filter dropping message: frame 'laser_frame' ...
+discarding message because the queue is full` right after launch** — this is
+normal for the first several seconds and not a bug. Bringing up the full TF
+chain takes a moment: Gazebo has to start, then `controller_manager` loads
+and activates `joint_state_broadcaster`, which is what makes `/joint_states`
+start publishing, which is what `wheel_state_odometry.py` needs before it can
+publish the `odom` TF, which is what `slam_toolbox` needs to resolve
+`laser_frame` and stop dropping scans. Give it ~10-15 seconds after launch
+before concluding something's wrong; check `ros2 topic hz /map` in another
+terminal once `wheel_state_odometry`'s "Publishing wheel-state odometry..."
+line appears in the log.
+
 ## How It Works
 
 ```text
