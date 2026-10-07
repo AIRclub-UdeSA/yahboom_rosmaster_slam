@@ -1,0 +1,11 @@
+# Caller for the shared workflow in AIRclub-UdeSA/.github
+# Setup checklist: https://github.com/AIRclub-UdeSA/.github/blob/main/CONTRIBUTING.md#setting-up-a-new-repository
+name: Block AI co-author
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  check-commit-messages:
+    uses: AIRclub-UdeSA/.github/.github/workflows/block-ai-coauthor.yml@main
